@@ -34,7 +34,6 @@
         .card-slot img:active, .card-palette img:active {
             cursor: grabbing;
         }
-        /* ドラッグ中の要素のスタイル */
         .dragging {
             opacity: 0.5;
         }
@@ -47,7 +46,6 @@
             border-bottom: 2px solid #4a5568;
             padding-bottom: 0.5rem;
         }
-        /* モーダルのスタイル */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -60,6 +58,13 @@
             align-items: center;
             z-index: 1000;
             transition: opacity 0.3s ease;
+        }
+        /* キャプチャ用のクローンスタイル */
+        .clone-for-capture {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 1280px; /* キャプチャ時の幅を固定 */
         }
     </style>
 </head>
@@ -94,29 +99,38 @@
             </div>
         </div>
         
-        <!-- デッキリスト表示エリア -->
-        <div id="deck-list-container" class="bg-gray-800 p-6 rounded-lg shadow-lg">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- 左側: メインデッキ -->
-                <div class="lg:col-span-2">
-                    <h2 class="deck-section-title">メインデッキ (<span id="main-deck-count">0</span>/60)</h2>
-                    <div id="main-deck-area" class="grid grid-cols-6 md:grid-cols-10 gap-2">
-                        <!-- JSでスロットを生成 -->
-                    </div>
-                </div>
-                
-                <!-- 右側: エクストラ＆サイド -->
-                <div class="flex flex-col gap-6">
-                    <div>
-                        <h2 class="deck-section-title">エクストラデッキ (<span id="extra-deck-count">0</span>/15)</h2>
-                        <div id="extra-deck-area" class="grid grid-cols-5 gap-2">
+        <!-- キャプチャ範囲のラッパー -->
+        <div id="capture-wrapper">
+            <!-- デッキ名入力 -->
+            <div class="mb-4">
+                <label for="deck-name-input" class="block text-lg font-bold mb-2 text-center">デッキ名</label>
+                <input type="text" id="deck-name-input" class="w-full max-w-md mx-auto bg-gray-700 border border-gray-600 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：マイ・フェイバリット・デッキ">
+            </div>
+
+            <!-- デッキリスト表示エリア -->
+            <div id="deck-list-container" class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 左側: メインデッキ -->
+                    <div class="lg:col-span-2">
+                        <h2 class="deck-section-title">メインデッキ (<span id="main-deck-count">0</span>)</h2>
+                        <div id="main-deck-area" class="grid grid-cols-6 md:grid-cols-10 gap-2">
                             <!-- JSでスロットを生成 -->
                         </div>
                     </div>
-                    <div>
-                        <h2 class="deck-section-title">サイドデッキ (<span id="side-deck-count">0</span>/15)</h2>
-                        <div id="side-deck-area" class="grid grid-cols-5 gap-2">
-                            <!-- JSでスロットを生成 -->
+                    
+                    <!-- 右側: エクストラ＆サイド -->
+                    <div class="flex flex-col gap-6">
+                        <div>
+                            <h2 class="deck-section-title">エクストラデッキ (<span id="extra-deck-count">0</span>)</h2>
+                            <div id="extra-deck-area" class="grid grid-cols-5 gap-2">
+                                <!-- JSでスロットを生成 -->
+                            </div>
+                        </div>
+                        <div>
+                            <h2 class="deck-section-title">サイドデッキ (<span id="side-deck-count">0</span>)</h2>
+                            <div id="side-deck-area" class="grid grid-cols-5 gap-2">
+                                <!-- JSでスロットを生成 -->
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -143,7 +157,8 @@
             const saveButton = document.getElementById('save-button');
             const resetButton = document.getElementById('reset-button');
             const cardPalette = document.getElementById('card-palette');
-            const deckListContainer = document.getElementById('deck-list-container');
+            const captureWrapper = document.getElementById('capture-wrapper');
+            const deckNameInput = document.getElementById('deck-name-input');
 
             const mainDeckArea = document.getElementById('main-deck-area');
             const extraDeckArea = document.getElementById('extra-deck-area');
@@ -160,18 +175,18 @@
             const modalButtons = document.getElementById('modal-buttons');
 
             // --- デッキのスロット数定義 ---
-            const MAIN_DECK_SLOTS = 60; // 10枚 x 6列
-            const EXTRA_DECK_SLOTS = 15; // 5枚 x 3列
-            const SIDE_DECK_SLOTS = 15;  // 5枚 x 3列
+            const MAIN_DECK_SLOTS = 60;
+            const EXTRA_DECK_SLOTS = 15;
+            const SIDE_DECK_SLOTS = 15;
 
-            let draggedItem = null; // ドラッグ中の要素を保持
-            let isDuplicating = false; // 複製モードかのフラグ
+            let draggedItem = null;
+            let isDuplicating = false;
 
             // --- モーダル表示関数 ---
             function showModal(title, message, buttons) {
                 modalTitle.textContent = title;
                 modalMessage.textContent = message;
-                modalButtons.innerHTML = ''; // ボタンをクリア
+                modalButtons.innerHTML = '';
                 buttons.forEach(btn => {
                     const buttonEl = document.createElement('button');
                     buttonEl.textContent = btn.text;
@@ -185,9 +200,9 @@
                 customModal.classList.remove('hidden');
             }
 
-            // --- デッキエリアのスロットを生成する関数 ---
+            // --- デッキエリアのスロットを生成 ---
             function createSlots(area, count) {
-                area.innerHTML = ''; // 初期化
+                area.innerHTML = '';
                 for (let i = 0; i < count; i++) {
                     const slot = document.createElement('div');
                     slot.classList.add('card-slot');
@@ -196,7 +211,7 @@
                 }
             }
             
-            // --- デッキのカード枚数を更新する関数 ---
+            // --- デッキのカード枚数を更新 ---
             function updateDeckCounts() {
                 mainDeckCountEl.textContent = mainDeckArea.querySelectorAll('img').length;
                 extraDeckCountEl.textContent = extraDeckArea.querySelectorAll('img').length;
@@ -210,6 +225,7 @@
                 createSlots(sideDeckArea, SIDE_DECK_SLOTS);
                 addDragAndDropListeners(document.querySelectorAll('.card-slot'));
                 updateDeckCounts();
+                deckNameInput.value = '';
             }
 
             // --- 画像アップロード処理 ---
@@ -217,17 +233,15 @@
                 const files = e.target.files;
                 for (const file of files) {
                     if (!file.type.startsWith('image/')) continue;
-
                     const reader = new FileReader();
                     reader.onload = (event) => {
                         const img = document.createElement('img');
                         img.src = event.target.result;
                         img.draggable = true;
-                        img.id = `card-${Date.now()}-${Math.random()}`; // ユニークID
-                        
+                        img.id = `card-${Date.now()}-${Math.random()}`;
                         const wrapper = document.createElement('div');
                         wrapper.classList.add('card-wrapper');
-                        wrapper.appendChild(img)
+                        wrapper.appendChild(img);
                         cardPalette.appendChild(wrapper);
                         addDragStartListener(img);
                     };
@@ -240,21 +254,12 @@
             function addDragStartListener(element) {
                 element.addEventListener('dragstart', (e) => {
                     draggedItem = e.target;
-                    
                     const sourceIsPalette = draggedItem.closest('#card-palette');
-                    if (sourceIsPalette) {
-                        isDuplicating = !e.altKey;
-                    } else {
-                        isDuplicating = e.altKey;
-                    }
-
+                    isDuplicating = sourceIsPalette ? !e.altKey : e.altKey;
                     setTimeout(() => {
-                        if (!isDuplicating) {
-                            e.target.classList.add('dragging');
-                        }
+                        if (!isDuplicating) e.target.classList.add('dragging');
                     }, 0);
                 });
-
                 element.addEventListener('dragend', (e) => {
                     e.target.classList.remove('dragging');
                     draggedItem = null;
@@ -262,7 +267,7 @@
                 });
             }
             
-            // --- 統一されたドロップ処理 ---
+            // --- ドロップ処理 ---
             function handleDrop(e) {
                 e.preventDefault();
                 const slot = e.currentTarget;
@@ -272,7 +277,6 @@
                 if (slot.hasChildNodes()) {
                     const existingCard = slot.firstElementChild;
                     if (existingCard === draggedItem) return;
-                    
                     const wrapper = document.createElement('div');
                     wrapper.classList.add('card-wrapper');
                     wrapper.appendChild(existingCard);
@@ -289,7 +293,6 @@
                 } else {
                     const originalParent = draggedItem.parentNode;
                     slot.appendChild(draggedItem);
-                    
                     if (originalParent && originalParent.classList.contains('card-wrapper')) {
                         originalParent.remove();
                     }
@@ -297,7 +300,7 @@
                 updateDeckCounts();
             }
 
-            // --- ドロップゾーンのイベントリスナー ---
+            // --- ドロップゾーンのリスナー設定 ---
             function addDragAndDropListeners(elements) {
                 elements.forEach(slot => {
                     slot.addEventListener('dragover', (e) => {
@@ -309,70 +312,85 @@
                 });
             }
 
-            // --- パレットもドロップゾーンにする ---
-            cardPalette.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.currentTarget.classList.add('drag-over');
-            });
-            cardPalette.addEventListener('dragleave', (e) => {
-                e.currentTarget.classList.remove('drag-over');
-            });
+            // --- パレットのドロップゾーン設定 ---
+            cardPalette.addEventListener('dragover', (e) => e.preventDefault());
             cardPalette.addEventListener('drop', (e) => {
                 e.preventDefault();
-                e.currentTarget.classList.remove('drag-over');
-                if (!draggedItem || isDuplicating) return;
-
-                if (!cardPalette.contains(draggedItem)) {
-                    const wrapper = document.createElement('div');
-                    wrapper.classList.add('card-wrapper');
-                    wrapper.appendChild(draggedItem);
-                    cardPalette.appendChild(wrapper);
-                    updateDeckCounts();
-                }
+                if (!draggedItem || isDuplicating || cardPalette.contains(draggedItem)) return;
+                const wrapper = document.createElement('div');
+                wrapper.classList.add('card-wrapper');
+                wrapper.appendChild(draggedItem);
+                cardPalette.appendChild(wrapper);
+                updateDeckCounts();
             });
 
             // --- 画像保存処理 ---
             saveButton.addEventListener('click', () => {
-                const slots = document.querySelectorAll('.card-slot');
-                slots.forEach(slot => slot.style.border = 'none');
+                // 1. キャプチャ用の要素を複製
+                const clone = captureWrapper.cloneNode(true);
+                clone.classList.add('clone-for-capture');
+                document.body.appendChild(clone);
 
-                html2canvas(deckListContainer, {
-                    backgroundColor: '#1a202c',
+                // 2. クローン内のデッキ名をテキストに変換
+                const deckName = deckNameInput.value || '名称未設定デッキ';
+                const deckNameForCapture = clone.querySelector('#deck-name-input');
+                const titleEl = document.createElement('h1');
+                titleEl.textContent = deckName;
+                titleEl.className = 'text-3xl font-bold text-center text-white mb-6';
+                deckNameForCapture.parentNode.replaceChild(titleEl, deckNameForCapture);
+
+                // 3. クローン内の空のスロットと空のデッキセクションを削除
+                const areasToClean = [
+                    { area: clone.querySelector('#main-deck-area'), section: clone.querySelector('#main-deck-area').previousElementSibling },
+                    { area: clone.querySelector('#extra-deck-area'), section: clone.querySelector('#extra-deck-area').previousElementSibling },
+                    { area: clone.querySelector('#side-deck-area'), section: clone.querySelector('#side-deck-area').previousElementSibling }
+                ];
+
+                areasToClean.forEach(item => {
+                    const slots = item.area.querySelectorAll('.card-slot');
+                    let hasCards = false;
+                    slots.forEach(slot => {
+                        if (slot.hasChildNodes()) {
+                            hasCards = true;
+                        } else {
+                            slot.remove(); // カードがないスロットを削除
+                        }
+                    });
+                    if (!hasCards) {
+                        // カードが1枚もなければセクションごと削除
+                        item.section.remove();
+                        item.area.remove();
+                    }
+                });
+
+                // 4. html2canvasでクローンをキャプチャ
+                html2canvas(clone, {
+                    backgroundColor: '#111827', // bg-gray-900
                     scale: 2,
                     useCORS: true
                 }).then(canvas => {
                     const link = document.createElement('a');
-                    link.download = 'decklist.png';
+                    const safeDeckName = deckName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    link.download = `${safeDeckName || 'decklist'}.png`;
                     link.href = canvas.toDataURL('image/png');
                     link.click();
-                    slots.forEach(slot => slot.style.border = '');
                 }).catch(err => {
                     console.error("画像の生成に失敗しました:", err);
                     showModal('エラー', '画像の生成に失敗しました。コンソールを確認してください。', [
                         { text: '閉じる', class: 'bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded' }
                     ]);
-                    slots.forEach(slot => slot.style.border = '');
+                }).finally(() => {
+                    // 5. クローンをDOMから削除
+                    document.body.removeChild(clone);
                 });
             });
             
             // --- リセット処理 ---
             resetButton.addEventListener('click', () => {
-                showModal(
-                    'リセットの確認',
-                    'すべてのカード配置とアップロードした画像をリセットしますか？',
+                showModal('リセットの確認','すべてのカード配置とアップロードした画像をリセットしますか？',
                     [
-                        {
-                            text: 'はい、リセットします',
-                            class: 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded',
-                            action: () => {
-                                cardPalette.innerHTML = '';
-                                initialize();
-                            }
-                        },
-                        {
-                            text: 'キャンセル',
-                            class: 'bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded'
-                        }
+                        { text: 'はい、リセットします', class: 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded', action: initialize },
+                        { text: 'キャンセル', class: 'bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded' }
                     ]
                 );
             });
