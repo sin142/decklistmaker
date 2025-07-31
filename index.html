@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>デッキリスト画像作成ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* カスタムスタイル */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .card-slot {
+            border: 2px dashed #4a5568;
+            background-color: #2d3748;
+            aspect-ratio: 59 / 86; /* 遊戯王カードの比率に近い */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .card-slot.drag-over {
+            background-color: #4a5568;
+            border-color: #a0aec0;
+        }
+        .card-slot img, .card-palette img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: grab;
+        }
+        .card-slot img:active, .card-palette img:active {
+            cursor: grabbing;
+        }
+        /* ドラッグ中の要素のスタイル */
+        .dragging {
+            opacity: 0.5;
+        }
+        .deck-section-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #e2e8f0;
+            margin-bottom: 1rem;
+            text-align: center;
+            border-bottom: 2px solid #4a5568;
+            padding-bottom: 0.5rem;
+        }
+        /* モーダルのスタイル */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white p-4 sm:p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- ヘッダーと操作パネル -->
+        <header class="bg-gray-800 p-4 rounded-lg mb-8 shadow-lg">
+            <h1 class="text-2xl font-bold text-center mb-4">デッキリスト画像作成ツール</h1>
+            <div class="flex flex-wrap justify-center items-center gap-4">
+                <div>
+                    <label for="image-upload" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg cursor-pointer transition-colors">
+                        カード画像を選択
+                    </label>
+                    <input type="file" id="image-upload" multiple accept="image/*" class="hidden">
+                </div>
+                <button id="save-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    デッキ画像を保存
+                </button>
+                 <button id="reset-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                    リセット
+                </button>
+            </div>
+            <p class="text-center text-gray-400 text-sm mt-4">ヒント: パレットからのドラッグは自動で複製されます。Alt(Option)キーで移動になります。</p>
+        </header>
+
+        <!-- アップロードされたカード置き場 -->
+        <div class="mb-8">
+            <h2 class="text-xl font-bold mb-4 text-center">アップロードしたカード (ここからドラッグ)</h2>
+            <div id="card-palette" class="bg-gray-800 p-4 rounded-lg min-h-[120px] grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2 shadow-inner">
+                <!-- ここにアップロードされたカードが表示されます -->
+            </div>
+        </div>
+        
+        <!-- デッキリスト表示エリア -->
+        <div id="deck-list-container" class="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左側: メインデッキ -->
+                <div class="lg:col-span-2">
+                    <h2 class="deck-section-title">メインデッキ (<span id="main-deck-count">0</span>/60)</h2>
+                    <div id="main-deck-area" class="grid grid-cols-6 md:grid-cols-10 gap-2">
+                        <!-- JSでスロットを生成 -->
+                    </div>
+                </div>
+                
+                <!-- 右側: エクストラ＆サイド -->
+                <div class="flex flex-col gap-6">
+                    <div>
+                        <h2 class="deck-section-title">エクストラデッキ (<span id="extra-deck-count">0</span>/15)</h2>
+                        <div id="extra-deck-area" class="grid grid-cols-5 gap-2">
+                            <!-- JSでスロットを生成 -->
+                        </div>
+                    </div>
+                    <div>
+                        <h2 class="deck-section-title">サイドデッキ (<span id="side-deck-count">0</span>/15)</h2>
+                        <div id="side-deck-area" class="grid grid-cols-5 gap-2">
+                            <!-- JSでスロットを生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- カスタムモーダル -->
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
+            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <p id="modal-message" class="text-gray-300 mb-6"></p>
+            <div id="modal-buttons" class="flex justify-end gap-4">
+                <!-- JSでボタンを生成 -->
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM要素の取得 ---
+            const imageUpload = document.getElementById('image-upload');
+            const saveButton = document.getElementById('save-button');
+            const resetButton = document.getElementById('reset-button');
+            const cardPalette = document.getElementById('card-palette');
+            const deckListContainer = document.getElementById('deck-list-container');
+
+            const mainDeckArea = document.getElementById('main-deck-area');
+            const extraDeckArea = document.getElementById('extra-deck-area');
+            const sideDeckArea = document.getElementById('side-deck-area');
+            
+            const mainDeckCountEl = document.getElementById('main-deck-count');
+            const extraDeckCountEl = document.getElementById('extra-deck-count');
+            const sideDeckCountEl = document.getElementById('side-deck-count');
+
+            // --- モーダル要素 ---
+            const customModal = document.getElementById('custom-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalMessage = document.getElementById('modal-message');
+            const modalButtons = document.getElementById('modal-buttons');
+
+            // --- デッキのスロット数定義 ---
+            const MAIN_DECK_SLOTS = 60; // 10枚 x 6列
+            const EXTRA_DECK_SLOTS = 15; // 5枚 x 3列
+            const SIDE_DECK_SLOTS = 15;  // 5枚 x 3列
+
+            let draggedItem = null; // ドラッグ中の要素を保持
+            let isDuplicating = false; // 複製モードかのフラグ
+
+            // --- モーダル表示関数 ---
+            function showModal(title, message, buttons) {
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                modalButtons.innerHTML = ''; // ボタンをクリア
+                buttons.forEach(btn => {
+                    const buttonEl = document.createElement('button');
+                    buttonEl.textContent = btn.text;
+                    buttonEl.className = btn.class;
+                    buttonEl.onclick = () => {
+                        customModal.classList.add('hidden');
+                        if (btn.action) btn.action();
+                    };
+                    modalButtons.appendChild(buttonEl);
+                });
+                customModal.classList.remove('hidden');
+            }
+
+            // --- デッキエリアのスロットを生成する関数 ---
+            function createSlots(area, count) {
+                area.innerHTML = ''; // 初期化
+                for (let i = 0; i < count; i++) {
+                    const slot = document.createElement('div');
+                    slot.classList.add('card-slot');
+                    slot.dataset.slotId = `${area.id}-${i}`;
+                    area.appendChild(slot);
+                }
+            }
+            
+            // --- デッキのカード枚数を更新する関数 ---
+            function updateDeckCounts() {
+                mainDeckCountEl.textContent = mainDeckArea.querySelectorAll('img').length;
+                extraDeckCountEl.textContent = extraDeckArea.querySelectorAll('img').length;
+                sideDeckCountEl.textContent = sideDeckArea.querySelectorAll('img').length;
+            }
+
+            // --- 初期化処理 ---
+            function initialize() {
+                createSlots(mainDeckArea, MAIN_DECK_SLOTS);
+                createSlots(extraDeckArea, EXTRA_DECK_SLOTS);
+                createSlots(sideDeckArea, SIDE_DECK_SLOTS);
+                addDragAndDropListeners(document.querySelectorAll('.card-slot'));
+                updateDeckCounts();
+            }
+
+            // --- 画像アップロード処理 ---
+            imageUpload.addEventListener('change', (e) => {
+                const files = e.target.files;
+                for (const file of files) {
+                    if (!file.type.startsWith('image/')) continue;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = document.createElement('img');
+                        img.src = event.target.result;
+                        img.draggable = true;
+                        img.id = `card-${Date.now()}-${Math.random()}`; // ユニークID
+                        
+                        const wrapper = document.createElement('div');
+                        wrapper.classList.add('card-wrapper');
+                        wrapper.appendChild(img)
+                        cardPalette.appendChild(wrapper);
+                        addDragStartListener(img);
+                    };
+                    reader.readAsDataURL(file);
+                }
+                e.target.value = '';
+            });
+
+            // --- ドラッグ開始リスナー ---
+            function addDragStartListener(element) {
+                element.addEventListener('dragstart', (e) => {
+                    draggedItem = e.target;
+                    
+                    const sourceIsPalette = draggedItem.closest('#card-palette');
+                    if (sourceIsPalette) {
+                        isDuplicating = !e.altKey;
+                    } else {
+                        isDuplicating = e.altKey;
+                    }
+
+                    setTimeout(() => {
+                        if (!isDuplicating) {
+                            e.target.classList.add('dragging');
+                        }
+                    }, 0);
+                });
+
+                element.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
+                    draggedItem = null;
+                    isDuplicating = false;
+                });
+            }
+            
+            // --- 統一されたドロップ処理 ---
+            function handleDrop(e) {
+                e.preventDefault();
+                const slot = e.currentTarget;
+                slot.classList.remove('drag-over');
+                if (!draggedItem) return;
+
+                if (slot.hasChildNodes()) {
+                    const existingCard = slot.firstElementChild;
+                    if (existingCard === draggedItem) return;
+                    
+                    const wrapper = document.createElement('div');
+                    wrapper.classList.add('card-wrapper');
+                    wrapper.appendChild(existingCard);
+                    cardPalette.appendChild(wrapper);
+                    slot.innerHTML = '';
+                }
+
+                if (isDuplicating) {
+                    const clone = draggedItem.cloneNode(true);
+                    clone.id = `card-${Date.now()}-${Math.random()}`;
+                    clone.classList.remove('dragging');
+                    addDragStartListener(clone);
+                    slot.appendChild(clone);
+                } else {
+                    const originalParent = draggedItem.parentNode;
+                    slot.appendChild(draggedItem);
+                    
+                    if (originalParent && originalParent.classList.contains('card-wrapper')) {
+                        originalParent.remove();
+                    }
+                }
+                updateDeckCounts();
+            }
+
+            // --- ドロップゾーンのイベントリスナー ---
+            function addDragAndDropListeners(elements) {
+                elements.forEach(slot => {
+                    slot.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        slot.classList.add('drag-over');
+                    });
+                    slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+                    slot.addEventListener('drop', handleDrop);
+                });
+            }
+
+            // --- パレットもドロップゾーンにする ---
+            cardPalette.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.currentTarget.classList.add('drag-over');
+            });
+            cardPalette.addEventListener('dragleave', (e) => {
+                e.currentTarget.classList.remove('drag-over');
+            });
+            cardPalette.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove('drag-over');
+                if (!draggedItem || isDuplicating) return;
+
+                if (!cardPalette.contains(draggedItem)) {
+                    const wrapper = document.createElement('div');
+                    wrapper.classList.add('card-wrapper');
+                    wrapper.appendChild(draggedItem);
+                    cardPalette.appendChild(wrapper);
+                    updateDeckCounts();
+                }
+            });
+
+            // --- 画像保存処理 ---
+            saveButton.addEventListener('click', () => {
+                const slots = document.querySelectorAll('.card-slot');
+                slots.forEach(slot => slot.style.border = 'none');
+
+                html2canvas(deckListContainer, {
+                    backgroundColor: '#1a202c',
+                    scale: 2,
+                    useCORS: true
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = 'decklist.png';
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    slots.forEach(slot => slot.style.border = '');
+                }).catch(err => {
+                    console.error("画像の生成に失敗しました:", err);
+                    showModal('エラー', '画像の生成に失敗しました。コンソールを確認してください。', [
+                        { text: '閉じる', class: 'bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded' }
+                    ]);
+                    slots.forEach(slot => slot.style.border = '');
+                });
+            });
+            
+            // --- リセット処理 ---
+            resetButton.addEventListener('click', () => {
+                showModal(
+                    'リセットの確認',
+                    'すべてのカード配置とアップロードした画像をリセットしますか？',
+                    [
+                        {
+                            text: 'はい、リセットします',
+                            class: 'bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded',
+                            action: () => {
+                                cardPalette.innerHTML = '';
+                                initialize();
+                            }
+                        },
+                        {
+                            text: 'キャンセル',
+                            class: 'bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded'
+                        }
+                    ]
+                );
+            });
+
+            // --- 初期化実行 ---
+            initialize();
+        });
+    </script>
+</body>
+</html>
